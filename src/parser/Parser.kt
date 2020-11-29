@@ -3,75 +3,86 @@ package parser
 import lexer.*
 
 class Parser(val lexer: ILexer) {
-    var next: Token = lexer.getNextToken()?:Token(OPERATOR,"$")
+    var next: Token = lexer.getNextToken() ?: Token(OPERATOR, "$")
 
-    fun getLine():Int{
+    fun getLine(): Int {
         return lexer.getLine()
     }
-    fun moveWhen(keywordOrOperator: String) {
-        if((next.type == KEYWORDS && next.value == keywordOrOperator) || (next.type == OPERATOR && next.value == keywordOrOperator)){
+
+    fun moveWhen(keywordOrOperator: String): String {
+        if ((next.type == KEYWORDS && next.value == keywordOrOperator) || (next.type == OPERATOR && next.value == keywordOrOperator)) {
             print(next.value)
-            next = lexer.getNextToken()?:Token(OPERATOR,"$")
-        }else{
+            val result = next.value
+            next = lexer.getNextToken() ?: Token(OPERATOR, "$")
+            return result
+        } else {
             throw Exception("on line ${getLine()} now is ${next.value}")
         }
     }
 
-    fun moveWhen(type: Int) {
-        if(next.type == type){
+    fun moveWhen(type: Int): String {
+        if (next.type == type) {
             print(next.value)
-            next = lexer.getNextToken()?:Token(OPERATOR,"$")
-        }
-        else throw Exception("on line ${getLine()}")
+            val result = next.value
+            next = lexer.getNextToken() ?: Token(OPERATOR, "$")
+            return result
+        } else throw Exception("on line ${getLine()}")
     }
 
-    fun program() {
-        when {
-            nextIsKeywords("class") -> classes()
-            else -> throw Exception("on line ${getLine()}")
-        }
-    }
-
-    fun classes() {
-        when {
+    fun program(): ASTNode {
+        return when {
             nextIsKeywords("class") -> {
-                class_()
-                moveWhen(";")
-                classes_nullable()
+                return Program(classes())
             }
             else -> throw Exception("on line ${getLine()}")
         }
     }
 
-    fun classes_nullable() {
-        when {
+    fun classes(): MutableList<Class> {
+        return when {
             nextIsKeywords("class") -> {
-                class_()
+                val clazz = clazz()
                 moveWhen(";")
-                classes_nullable()
+                classes_nullable().apply {
+                    add(0,clazz)
+                }
             }
-            nextIsOperator("$") -> return
             else -> throw Exception("on line ${getLine()}")
         }
     }
 
-    fun class_() {
+    fun classes_nullable(): MutableList<Class> {
+        return when {
+            nextIsKeywords("class") -> {
+                val clazz = clazz()
+                moveWhen(";")
+                classes_nullable().apply {
+                    add(0, clazz)
+                }
+            }
+            nextIsOperator("$") -> mutableListOf()
+            else -> throw Exception("on line ${getLine()}")
+        }
+    }
+
+    fun clazz(): Class {
         when {
             nextIsKeywords("class") -> {
                 moveWhen("class")
-                moveWhen(IDENTIFIER)
-                inheris_options()
+                val type = moveWhen(IDENTIFIER)
+                val inheritsType = inheris_options()
                 moveWhen("{")
-                features()
+                val features = features()
                 moveWhen("}")
+                return Class(type, inheritsType,features)
             }
             else -> throw Exception("on line ${getLine()}")
         }
     }
 
-    fun inheris_options() {
-        when {
-            nextIsOperator("{") -> return
+    fun inheris_options(): String? {
+        return when {
+            nextIsOperator("{") -> return null
             nextIsKeywords("inherits") -> {
                 moveWhen("inherits")
                 moveWhen(IDENTIFIER)
@@ -80,208 +91,259 @@ class Parser(val lexer: ILexer) {
         }
     }
 
-    fun features() {
-        when {
-            nextIsOperator("}") -> return
+    fun features(): MutableList<Feature> {
+        return when {
+            nextIsOperator("}") -> return mutableListOf()
             nextIsIdentifier() -> {
-                feature()
-                features()
-            }
-            else -> throw Exception("on line ${getLine()}")
-        }
-    }
-    fun feature() {
-        when {
-            nextIsIdentifier()->{
-                moveWhen(IDENTIFIER)
-                feature_()
-                moveWhen(";")
+                val feature = feature()
+                features().apply {
+                    add(0,feature)
+                }
             }
             else -> throw Exception("on line ${getLine()}")
         }
     }
 
-    fun feature_() {
+    fun feature(): Feature {
+        when {
+            nextIsIdentifier() -> {
+                val left = moveWhen(IDENTIFIER)
+                val featureExceptLeft = feature_()
+                moveWhen(";")
+                return featureExceptLeft.toFeature(left)
+            }
+            else -> throw Exception("on line ${getLine()}")
+        }
+    }
+    abstract class Feature_Except_Left{
+        abstract fun toFeature(left: String): Feature
+    }
+    fun feature_(): Feature_Except_Left {
         when {
             nextIsOperator(":") -> {
                 moveWhen(":")
-                moveWhen(IDENTIFIER)
-                feature_options()
+                val returnType = moveWhen(IDENTIFIER)
+                val expr = feature_options()
+                return object: Feature_Except_Left(){
+                    override fun toFeature(left: String): Feature {
+                        return Feature(left, mutableListOf(), returnType, expr)
+                    }
+
+                }
             }
             nextIsOperator("(") -> {
                 moveWhen("(")
-                formals()
+                val formals = formals()
                 moveWhen(")")
                 moveWhen(":")
-                moveWhen(IDENTIFIER)
+                val returnType = moveWhen(IDENTIFIER)
                 moveWhen("{")
-                expr()
+                val expr = expr()
                 moveWhen("}")
+                return object : Feature_Except_Left(){
+                    override fun toFeature(left: String): Feature {
+                        return Feature(left, formals, returnType, expr)
+                    }
+
+                }
             }
             else -> throw Exception("on line ${getLine()}")
         }
     }
 
-    fun feature_options() {
-        when {
+    fun feature_options(): Expr? {
+        return when {
             nextIsOperator("<-") -> {
                 moveWhen("<-")
                 expr()
             }
-            nextIsOperator(";") -> return
+            nextIsOperator(";") -> return null
             else -> throw Exception("on line ${getLine()}")
         }
     }
 
-    fun formals() {
-        when {
-            nextIsOperator(")") -> return
+    fun formals(): MutableList<Formal> {
+        return when {
+            nextIsOperator(")") -> return mutableListOf()
             nextIsIdentifier() -> {
-                formal()
-                formals_options()
+                val formal = formal()
+                formals_options().apply {
+                    add(0, formal)
+                }
             }
             else -> throw Exception("on line ${getLine()}")
         }
     }
 
-    fun formals_options() {
-        when {
-            nextIsOperator(")") -> return
+    fun formals_options(): MutableList<Formal> {
+        return when {
+            nextIsOperator(")") -> mutableListOf()
             nextIsOperator(",") -> {
                 moveWhen(",")
-                formal()
-                formals_options()
-            }
-            else-> throw Exception("on line ${getLine()}")
-        }
-    }
-
-    fun formal() {
-        when {
-            nextIsIdentifier() -> {
-                moveWhen(IDENTIFIER)
-                moveWhen(":")
-                moveWhen(IDENTIFIER)
+                val formal = formal()
+                formals_options().apply {
+                    add(0, formal)
+                }
             }
             else -> throw Exception("on line ${getLine()}")
         }
     }
 
-    fun expr() {
+    fun formal(): Formal {
+        when {
+            nextIsIdentifier() -> {
+                val id = moveWhen(IDENTIFIER)
+                moveWhen(":")
+                val type = moveWhen(IDENTIFIER)
+                return Formal(id, type)
+            }
+            else -> throw Exception("on line ${getLine()}")
+        }
+    }
+
+    fun expr(): Expr {
         when {
             nextIsOperator("{") -> {
                 moveWhen("{")
-                exprs()
+                val left = exprs()
                 moveWhen("}")
-                expr_ops()
+                return expr_ops()?.toExpr(left) ?: left
             }
             nextIsOperator("~") -> {
                 moveWhen("~")
-                expr()
-                expr_ops()
+                val left = expr()
+                return expr_ops()?.toExpr(left) ?: left
             }
             nextIsOperator("(") -> {
                 moveWhen("(")
-                expr()
+                val left = expr()
                 moveWhen(")")
-                expr_ops()
+                return expr_ops()?.toExpr(left) ?: left
             }
             nextIsIdentifier() -> {
-                moveWhen(IDENTIFIER)
-                expr_id()
-                expr_ops()
+                val id = moveWhen(IDENTIFIER)
+                val child = expr_id()
+                child.toExpr(id).let {
+                    return expr_ops()?.toExpr(it) ?: it
+                }
+
             }
             nextIsKeywords("if") -> {
                 moveWhen("if")
-                expr()
+                val condition = expr()
                 moveWhen("then")
-                expr()
+                val trueBranch = expr()
                 moveWhen("else")
-                expr()
+                val falseBranch = expr()
                 moveWhen("fi")
-                expr_ops()
+                Expr_If(condition, trueBranch, falseBranch).let {
+                    return expr_ops()?.toExpr(it) ?: it
+                }
             }
             nextIsKeywords("while") -> {
                 moveWhen("while")
-                expr()
+                val condition = expr()
                 moveWhen("loop")
-                expr()
+                val body = expr()
                 moveWhen("pool")
-                expr()
-                expr_ops()
+                Expr_While(condition, body).let {
+                    return expr_ops()?.toExpr(it) ?: it
+
+                }
             }
             nextIsKeywords("let") -> {
                 moveWhen("let")
-                moveWhen(IDENTIFIER)
+                val id = moveWhen(IDENTIFIER)
                 moveWhen(":")
-                moveWhen(IDENTIFIER)
-                let_setvalue()
-                let_options()
+                val type = moveWhen(IDENTIFIER)
+                val init = let_setvalue()
+                val ops = let_options()
                 moveWhen("in")
-                expr()
-                expr_ops()
+                val body = expr()
+                Expr_Let(id, type, init, ops, body).let {
+                    return expr_ops()?.toExpr(it) ?: it
+                }
             }
             nextIsKeywords("case") -> {
                 moveWhen("case")
-                expr()
+                val baseExpr = expr()
                 moveWhen("of")
-                moveWhen(IDENTIFIER)
+                val id = moveWhen(IDENTIFIER)
                 moveWhen(":")
-                moveWhen(IDENTIFIER)
+                val type = moveWhen(IDENTIFIER)
                 moveWhen("=>")
-                expr()
+                val body = expr()
                 moveWhen(";")
-                case_options()
+                val ops = case_options().apply {
+                    add(0, AST_Case_Options(id, type, body))
+                }
                 moveWhen("esac")
-                expr_ops()
+                Expr_Case(baseExpr, ops).let {
+                    return expr_ops()?.toExpr(it) ?: it
+                }
+
             }
             nextIsKeywords("new") -> {
                 moveWhen("new")
-                moveWhen(IDENTIFIER)
-                expr_ops()
+                val type = moveWhen(IDENTIFIER)
+                Expr_New(type).let {
+                    return expr_ops()?.toExpr(it)?:it
+                }
+
             }
             nextIsKeywords("isvoid") -> {
                 moveWhen("isvoid")
-                expr()
-                expr_ops()
+                val expr = expr()
+                Expr_Isvoid(expr).let {
+                    return expr_ops()?.toExpr(it)?:it
+                }
+
             }
             nextIsKeywords("not") -> {
                 moveWhen("not")
-                expr()
-                expr_ops()
+                val expr = expr()
+                Expr_Not(expr).let {
+                    return expr_ops()?.toExpr(it)?:it
+
+                }
             }
             nextIsInteger() -> {
-                moveWhen(INTEGER)
-                expr_ops()
+                val value = moveWhen(INTEGER).toInt()
+                Expr_Integer(value).let {
+                    return expr_ops()?.toExpr(it)?:it
+                }
             }
             nextIsString() -> {
-                moveWhen(STRING)
-                expr_ops()
+                val value = moveWhen(STRING)
+                Expr_String(value).let {
+                    return expr_ops()?.toExpr(it)?:it
+                }
             }
             nextIsKeywords("true") -> {
-                moveWhen("true")
-                expr_ops()
+                val value = moveWhen("true").toBoolean()
+                Expr_Boolean(value).let {
+                    return expr_ops()?.toExpr(it)?:it
+                }
             }
             nextIsKeywords("false") -> {
-                moveWhen("false")
-                expr_ops()
+                val value = moveWhen("false").toBoolean()
+                Expr_Boolean(value).let {
+                    return expr_ops()?.toExpr(it)?:it
+                }
             }
-                nextIsOperator("+") || nextIsOperator("}") || nextIsOperator("-") || nextIsOperator("*") || nextIsOperator("/") || nextIsOperator(
-                    "<"
-                ) ||
-                        nextIsOperator("<=") || nextIsOperator("=") || nextIsOperator(")") || nextIsOperator(";") || nextIsOperator(
-                    ","
-                ) || nextIsOperator("@") ||
-                        nextIsOperator(".") || nextIsKeywords("then") || nextIsKeywords("else") || nextIsKeywords("fi") || nextIsKeywords(
-                    "loop"
-                ) || nextIsKeywords("pool") ||
-                        nextIsKeywords("in") || nextIsKeywords("of")
-            -> return
+//            nextIsOperator("+") || nextIsOperator("}") || nextIsOperator("-") || nextIsOperator("*") || nextIsOperator("/") || nextIsOperator(
+//                "<"
+//            ) ||
+//                    nextIsOperator("<=") || nextIsOperator("=") || nextIsOperator("@") || nextIsOperator(".") ||
+//            nextIsOperator(")") || nextIsOperator(";") || nextIsOperator(",") || nextIsKeywords("then") || nextIsKeywords("else") ||
+//                    nextIsKeywords("fi") || nextIsKeywords("loop") || nextIsKeywords("pool") ||
+//                    nextIsKeywords("in") || nextIsKeywords("of")
+//            -> return
             else -> throw Exception("on line ${getLine()}")
         }
     }
 
-    fun exprs() {
+    fun exprs(): Expr_Exprs {
         when {
             nextIsOperator("{") || nextIsOperator("~") || nextIsOperator("(") || nextIsIdentifier() || nextIsKeywords("if") || nextIsKeywords(
                 "while"
@@ -290,67 +352,85 @@ class Parser(val lexer: ILexer) {
                 "not"
             ) || nextIsInteger() || nextIsString() || nextIsKeywords("true") || nextIsKeywords("false")
             -> {
-                expr()
+                val expr = expr()
                 moveWhen(";")
-                exprs()
+                return exprs().apply { exprs.add(0, expr) }
             }
-            nextIsOperator("}")  -> return
+            nextIsOperator("}") -> return Expr_Exprs(mutableListOf())
             else -> throw Exception("on line ${getLine()}")
         }
     }
 
-    fun let_setvalue() {
-        when {
+    fun let_setvalue(): ASTNode? {
+        return when {
             nextIsOperator("<-") -> {
                 moveWhen("<-")
                 expr()
             }
-            nextIsOperator(",") || nextIsKeywords("in") -> return
+            nextIsOperator(",") || nextIsKeywords("in") -> return null
             else -> throw Exception("on line ${getLine()}")
         }
     }
 
-    fun let_options() {
+    fun let_options(): MutableList<AST_Let_Options> {
         when {
             nextIsOperator(",") -> {
                 moveWhen(",")
-                moveWhen(IDENTIFIER)
+                val id = moveWhen(IDENTIFIER)
                 moveWhen(":")
-                moveWhen(IDENTIFIER)
-                let_setvalue()
-                let_options()
+                val type = moveWhen(IDENTIFIER)
+                val body = let_setvalue()
+                return let_options().apply {
+                    add(0, AST_Let_Options(id, type, body))
+                }
             }
-            nextIsKeywords("in") -> return
+            nextIsKeywords("in") -> return mutableListOf()
             else -> throw Exception("on line ${getLine()}now is ${next.value}")
         }
     }
 
-    fun case_options() {
+    fun case_options(): MutableList<AST_Case_Options> {
         when {
             nextIsIdentifier() -> {
-                moveWhen(IDENTIFIER)
+                val id = moveWhen(IDENTIFIER)
                 moveWhen(":")
-                moveWhen(IDENTIFIER)
+                val type = moveWhen(IDENTIFIER)
                 moveWhen("=>")
-                expr()
+                val body = expr()
                 moveWhen(";")
-                case_options()
+                return case_options().apply {
+                    add(0, AST_Case_Options(id, type, body))
+                }
             }
-            nextIsKeywords("easc") -> return
+            nextIsKeywords("easc") -> return mutableListOf()
             else -> throw Exception("on line ${getLine()}")
         }
     }
-
-    fun expr_id() {
+    abstract class Expr_ID_Excepr_Left {
+        abstract fun toExpr(left: String): Expr
+    }
+    fun expr_id(): Expr_ID_Excepr_Left {
         when {
             nextIsOperator("<-") -> {
                 moveWhen("<-")
-                expr()
+                val child = expr()
+                return object : Expr_ID_Excepr_Left() {
+                    override fun toExpr(left: String): Expr {
+                        return Expr_Assignment(left, child)
+                    }
+
+                }
             }
             nextIsOperator("(") -> {
                 moveWhen("(")
-                exprs_par()
+                val ops = exprs_par()
                 moveWhen(")")
+                return object : Expr_ID_Excepr_Left() {
+                    override fun toExpr(left: String): Expr {
+                        return Expr_Local_FunctionCall(left, ops)
+                    }
+
+                }
             }
             nextIsOperator("+") || nextIsOperator("}") || nextIsOperator("-") || nextIsOperator("*") || nextIsOperator("/") || nextIsOperator(
                 "<"
@@ -362,86 +442,155 @@ class Parser(val lexer: ILexer) {
             ) || nextIsKeywords("fi") || nextIsKeywords(
                 "loop"
             ) || nextIsKeywords("pool") ||
-                    nextIsKeywords("in") || nextIsKeywords("of") -> return
+                    nextIsKeywords("in") || nextIsKeywords("of") -> return object : Expr_ID_Excepr_Left(){
+                override fun toExpr(left: String): Expr {
+                    return Expr_Identifier(left)
+                }
+
+            }
             else -> throw Exception("on line ${getLine()}")
         }
     }
 
-    fun expr_ops() {
+    abstract class Expr_Except_Left {
+        abstract fun toExpr(left: Expr): Expr
+    }
+
+    fun expr_ops(): Expr_Except_Left? {
         when {
             nextIsOperator("}") || nextIsOperator(")") || nextIsOperator(";") || nextIsOperator(",") || nextIsKeywords("then") || nextIsKeywords(
                 "else"
             )
                     || nextIsKeywords("fi") || nextIsKeywords("loop") || nextIsKeywords("pool") || nextIsKeywords("in") || nextIsKeywords(
                 "of"
-            ) -> return
+            ) -> return null
             nextIsOperator("+") -> {
                 moveWhen("+")
-                expr()
+                val right = expr()
+                return object : Expr_Except_Left() {
+                    override fun toExpr(left: Expr): Expr {
+                        return Expr_Add(left, right)
+                    }
+                }
             }
             nextIsOperator("-") -> {
                 moveWhen("-")
-                expr()
+                val right = expr()
+                return object : Expr_Except_Left() {
+                    override fun toExpr(left: Expr): Expr {
+                        return Expr_Less(left, right)
+                    }
+                }
             }
             nextIsOperator("*") -> {
                 moveWhen("*")
-                expr()
+                val right = expr()
+                return object : Expr_Except_Left() {
+                    override fun toExpr(left: Expr): Expr {
+                        return Expr_Multiply(left, right)
+                    }
+                }
             }
             nextIsOperator("/") -> {
                 moveWhen("/")
-                expr()
+                val right = expr()
+                return object : Expr_Except_Left() {
+                    override fun toExpr(left: Expr): Expr {
+                        return Expr_Division(left, right)
+                    }
+                }
             }
             nextIsOperator("<") -> {
                 moveWhen("<")
-                expr()
+                val right = expr()
+                return object : Expr_Except_Left() {
+                    override fun toExpr(left: Expr): Expr {
+                        return Expr_Less(left, right)
+                    }
+                }
             }
             nextIsOperator("<=") -> {
                 moveWhen("<=")
-                expr()
+                val right = expr()
+                return object : Expr_Except_Left() {
+                    override fun toExpr(left: Expr): Expr {
+                        return Expr_LessOrEquals(left, right)
+                    }
+                }
             }
             nextIsOperator("=") -> {
                 moveWhen("=")
-                expr()
+                val right = expr()
+                return object : Expr_Except_Left() {
+                    override fun toExpr(left: Expr): Expr {
+                        return Expr_Equals(left, right)
+                    }
+                }
             }
             nextIsOperator("@") -> {
                 moveWhen("@")
-                moveWhen(IDENTIFIER)
+                val type = moveWhen(IDENTIFIER)
                 moveWhen(".")
-                moveWhen(IDENTIFIER)
+                val id = moveWhen(IDENTIFIER)
                 moveWhen("(")
-                exprs_par()
+                val ops = exprs_par()
                 moveWhen(")")
-            }
-            nextIsOperator(".")->{
-                moveWhen(".")
-                moveWhen(IDENTIFIER)
-                moveWhen("(")
-                exprs_par()
-                moveWhen(")")
-            }
-            else -> throw Exception("on line ${getLine()}")
-        }
-    }
-    fun exprs_par() {
-        when {
-            nextIsOperator("~") || nextIsOperator("(") || nextIsIdentifier() || nextIsKeywords("if") || nextIsKeywords("while") || nextIsKeywords("let") || nextIsKeywords("case") || nextIsKeywords("new") || nextIsKeywords("isvoid") || nextIsKeywords("not") || nextIsInteger() || nextIsString() || nextIsKeywords("true") || nextIsKeywords("false")->{
-                expr()
-                exprs_par_()
-            }
-            nextIsOperator(")")->return
-            else -> throw Exception("on line ${getLine()}")
-        }
-    }
-    fun exprs_par_() {
-            when{
-                nextIsOperator(",")->{
-                    moveWhen(",")
-                    expr()
-                    exprs_par_()
+                return object : Expr_Except_Left() {
+                    override fun toExpr(left: Expr): Expr {
+                        return Expr_StaticFunctionCall(left, type, id, ops)
+                    }
+
                 }
-                nextIsOperator(")")->return
-                else -> throw Exception("on line ${getLine()}")
+
             }
+            nextIsOperator(".") -> {
+                moveWhen(".")
+                val id = moveWhen(IDENTIFIER)
+                moveWhen("(")
+                val ops = exprs_par()
+                moveWhen(")")
+                return object : Expr_Except_Left() {
+                    override fun toExpr(left: Expr): Expr {
+                        return Expr_FunctionCall(left, id, ops)
+                    }
+
+                }
+            }
+            else -> throw Exception("on line ${getLine()}")
+        }
+    }
+
+    fun exprs_par(): MutableList<ASTNode> {
+        when {
+            nextIsOperator("~") || nextIsOperator("(") || nextIsIdentifier() || nextIsKeywords("if") || nextIsKeywords("while") || nextIsKeywords(
+                "let"
+            ) || nextIsKeywords("case") || nextIsKeywords("new") || nextIsKeywords("isvoid") || nextIsKeywords("not") || nextIsInteger() || nextIsString() || nextIsKeywords(
+                "true"
+            ) || nextIsKeywords("false") -> {
+                val expr = expr()
+                return exprs_par_().apply {
+                    add(0,expr)
+                }
+
+            }
+            nextIsOperator(")") -> return mutableListOf()
+            else -> throw Exception("on line ${getLine()}")
+        }
+    }
+
+    fun exprs_par_(): MutableList<ASTNode> {
+        when {
+            nextIsOperator(",") -> {
+                moveWhen(",")
+                val expr = expr()
+                return exprs_par_().apply {
+                    add(0,expr)
+                }
+
+            }
+            nextIsOperator(")") -> return mutableListOf()
+            else -> throw Exception("on line ${getLine()}")
+        }
     }
 
     fun nextIsOperator(value: String): Boolean = next.type == OPERATOR && next.value == value
