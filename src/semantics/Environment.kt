@@ -1,11 +1,12 @@
 package semantics
 
-object Environment {
+import parser.Formal
 
+object Environment {
     fun findSymbol(identifier: String): Type {
 
     }
-    fun getFunctionResultType(type: Type, identifier: String): List<Type> {
+    fun getFunctionResult(type: Type, identifier: String, formals: List<Formal>): Type {
 
     }
     fun add(identifier: String, type: Type){
@@ -16,6 +17,15 @@ object Environment {
 
     }
     fun subType(source: Type, target: Type): Boolean{
+
+    }
+    fun currentClassType(): Type{
+
+    }
+    fun enterClass(type: Type){
+
+    }
+    fun registerMethod(clazz :Type, function: String) {
 
     }
     //返回t1和t2的最小公共父类
@@ -32,4 +42,5 @@ object Environment {
     fun exitScope() {
 
     }
+
 }

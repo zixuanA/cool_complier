@@ -126,7 +126,7 @@ class Parser(val lexer: ILexer) {
                 val expr = feature_options()
                 return object: Feature_Except_Left(){
                     override fun toFeature(left: String): Feature {
-                        return Feature(left, mutableListOf(), returnType, expr)
+                        return Feature_Attributes(left, returnType, expr)
                     }
 
                 }
@@ -142,7 +142,7 @@ class Parser(val lexer: ILexer) {
                 moveWhen("}")
                 return object : Feature_Except_Left(){
                     override fun toFeature(left: String): Feature {
-                        return Feature(left, formals, returnType, expr)
+                        return Feature_Function(left, formals, returnType, expr)
                     }
 
                 }
@@ -211,8 +211,8 @@ class Parser(val lexer: ILexer) {
             }
             nextIsOperator("~") -> {
                 moveWhen("~")
-                val left = expr()
-                return expr_ops()?.toExpr(left) ?: left
+                val expr = expr()
+                return Expr_Neg(expr)
             }
             nextIsOperator("(") -> {
                 moveWhen("(")
@@ -505,7 +505,7 @@ class Parser(val lexer: ILexer) {
                 val right = expr()
                 return object : Expr_Except_Left() {
                     override fun toExpr(left: Expr): Expr {
-                        return Expr_Less(left, right)
+                        return Expr_LessThan(left, right)
                     }
                 }
             }
