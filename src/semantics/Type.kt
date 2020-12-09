@@ -1,7 +1,11 @@
 package semantics
 
+val OBJECT = Type("Object", null)
 val SELF_TYPE = Type("SELF_TYPE")
-data class Type(val type: String)
+class Type(val type: String, val parent: Type? = OBJECT) {
+    fun isSubType(target: Type):Boolean {
+        return target == parent || parent?.isSubType(target) ?: false
+    }
+}
 
-fun String.toType() = Type(this)//todo 现在的实现有问题，会拿到没有的type
-fun Type.isSubType(target: Type) = Environment.subType(this,target)
+fun String.toType() = TypeTable.getType(this)

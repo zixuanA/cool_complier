@@ -5,7 +5,9 @@ import semantics.*
 abstract class ASTNode {
     val children = mutableListOf<ASTNode>()
     abstract fun typeCheck(): Type?
-    abstract fun codeGen()
+    open fun codeGen(){
+
+    }
     fun wrongType(): Type {
         throw Exception("Wrong type")
     }
@@ -44,7 +46,8 @@ abstract class Feature() : ASTNode()
 class Feature_Function(val id: String, val formals: List<Formal>, val returnType: String, val expr: ASTNode) :
     Feature() {
     override fun typeCheck(): Type? {
-        val resultType = Environment.getFunctionResult(Environment.currentClassType(), id, formals)
+
+        val resultType = Environment.getFunctionResult(Environment.currentClassType(), id, formals.map { it.type.toType() })
         Environment.enterScope()
         Environment.add("self", Environment.currentClassType())
         formals.forEach {
@@ -125,12 +128,12 @@ class Expr_Assignment(val identifier: String, val child: ASTNode) : Expr() {
 
 }
 
-class Expr_StaticFunctionCall(val caller: ASTNode, val type: String, val id: String, val ops: List<Formal>) : Expr() {
+class Expr_StaticFunctionCall(val caller: ASTNode, val type: String, val id: String, val exprs: List<Expr>) : Expr() {
     override fun typeCheck(): Type? {
         caller.typeCheck()?.let { t0 ->
             if (!t0.isSubType(type.toType())) wrongType()
 
-            val t = Environment.getFunctionResult(type.toType(), id, ops)
+            val t = Environment.getFunctionResult(type.toType(), id, exprs.map { it.typeCheck()!! })
 
             if(t == SELF_TYPE) {
                 return t0
@@ -147,11 +150,11 @@ class Expr_StaticFunctionCall(val caller: ASTNode, val type: String, val id: Str
 
 }
 
-class Expr_FunctionCall(val caller: ASTNode, val id: String, val ops: List<Formal>) : Expr() {
+class Expr_FunctionCall(val caller: ASTNode, val id: String, val exprs: List<Expr>) : Expr() {
     override fun typeCheck(): Type? {
         caller.typeCheck()?.let { t0 ->
             val callerType = if(t0 == SELF_TYPE) Environment.currentClassType() else t0
-            val t = Environment.getFunctionResult(callerType, id, ops)
+            val t = Environment.getFunctionResult(callerType, id, exprs.map { it.typeCheck()!! })
 
             if(t == SELF_TYPE) {
                 return t0
@@ -168,11 +171,14 @@ class Expr_FunctionCall(val caller: ASTNode, val id: String, val ops: List<Forma
 
 }
 
-class Expr_Local_FunctionCall(val id: String, val ops: List<Formal>) : Expr() {
+class Expr_Local_FunctionCall(val id: String, val ops: List<Expr>) : Expr() {
     override fun typeCheck(): Type? {
         Environment.currentClassType().let { t0 ->
-
-            val t = Environment.getFunctionResult(t0, id, ops)
+            val types = mutableListOf<Type>()
+            ops.forEach {
+                types.add(it.typeCheck()!!)
+            }
+            val t = Environment.getFunctionResult(t0, id, types)
 
             if(t == SELF_TYPE) {
                 return t0
@@ -195,7 +201,7 @@ class Expr_If(val condition: ASTNode, val trueBranch: ASTNode, val falseBranch: 
         val t1 = condition.typeCheck()
         val t2 = trueBranch.typeCheck()?:wrongType()
         val t3 = falseBranch.typeCheck()?:wrongType()
-        return Environment.lub(t2,t3)
+        return TypeTable.lub(t2,t3)
     }
 
     override fun codeGen() {
@@ -274,7 +280,7 @@ class Expr_Case(val expr: ASTNode, val ops: List<AST_Case_Options>) : Expr() {
                 Environment.enterScope()
                 Environment.add(it.id,it.type.toType())
                 it.body.typeCheck()?.let {
-                    result = if(result == null) it else Environment.lub(it,result!!)
+                    result = if(result == null) it else TypeTable.lub(it,result!!)
                 }
                 Environment.exitScope()
             }

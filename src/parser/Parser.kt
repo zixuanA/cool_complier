@@ -560,7 +560,7 @@ class Parser(val lexer: ILexer) {
         }
     }
 
-    fun exprs_par(): MutableList<ASTNode> {
+    fun exprs_par(): MutableList<Expr> {
         when {
             nextIsOperator("~") || nextIsOperator("(") || nextIsIdentifier() || nextIsKeywords("if") || nextIsKeywords("while") || nextIsKeywords(
                 "let"
@@ -578,7 +578,7 @@ class Parser(val lexer: ILexer) {
         }
     }
 
-    fun exprs_par_(): MutableList<ASTNode> {
+    fun exprs_par_(): MutableList<Expr> {
         when {
             nextIsOperator(",") -> {
                 moveWhen(",")
