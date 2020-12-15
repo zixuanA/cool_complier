@@ -14,11 +14,15 @@ object Environment {
         }
 
         fun add(identifier: String, type: Type) {
-
+            if(identifiers[identifier] != null) throw Exception("conflict args $identifier")
+            identifiers[identifier] = type
         }
     }
 
     private val scopes = ArrayDeque<Scope>()
+    init {
+        enterScope()
+    }
     fun findSymbol(identifier: String): Type {
         scopes.forEach {
             it.find(identifier)?.let { type ->
@@ -40,6 +44,8 @@ object Environment {
 
     fun enterClass(type: Type) {
         currentType = type
+        exitScope()
+        enterScope()
     }
 
     fun checkScope(identifier: String): Boolean {

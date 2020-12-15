@@ -1,8 +1,5 @@
-import parser.Formal
-
 import semantics.Type
 import semantics.toType
-
 
 
 object FunctionTable {
@@ -42,6 +39,9 @@ object FunctionTable {
                                 return function
                             }
                         }
+                        if (types.isEmpty()) {
+                            return function
+                        }
                     }
                 }
             }
@@ -56,7 +56,7 @@ object FunctionTable {
                 it[types.size]?.let { functions ->
                     functions.forEach { function ->
                         for (index in types.indices) {
-                            if (!types[index].type.toType().isSubType(function.types[index].type.toType())) break
+                            if (!types[index].type.toType().isSubTypeOrSelf(function.types[index].type.toType())) break
                             if (index == types.size - 1) {
                                 if (result != null) throw Exception("ambiguous functions in class ${type.type}")
                                 result = function
@@ -75,6 +75,7 @@ object FunctionTable {
      */
     fun getFunction(type: Type, name: String, types: List<Type>): Function {
         return (getDirectFunction(type, name, types) ?: getAmbiguousFunction(type, name, types))
+            ?: type.parent?.let { getFunction(it, name, types) }
             ?: throw NoSuchMethodException("in class ${type.type} function $name")
     }
 }

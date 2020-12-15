@@ -1,9 +1,15 @@
-import semantics.Type
+import semantics.*
 
 object TypeTable {
     private val types = mutableMapOf<String, Type>()
-    fun addType(name: String, type: Type) {
-        types[name] = type
+    init {
+        addType(OBJECT)
+        addType(SELF_TYPE)
+//        addType(STRING)
+//        addType(IO)
+    }
+    fun addType(type: Type) {
+        types[type.type] = type
     }
 
     fun getType(type: String): Type = types[type]?:throw ClassNotFoundException(type)

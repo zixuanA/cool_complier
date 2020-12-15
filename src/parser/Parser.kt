@@ -1,6 +1,7 @@
 package parser
 
 import lexer.*
+import semantics.Type
 
 class Parser(val lexer: ILexer) {
     var next: Token = lexer.getNextToken() ?: Token(OPERATOR, "$")
@@ -32,7 +33,10 @@ class Parser(val lexer: ILexer) {
     fun program(): ASTNode {
         return when {
             nextIsKeywords("class") -> {
-                return Program(classes())
+                return Program(classes()).apply {
+                    //向TypeTable中添加合法的Type
+                    init()
+                }
             }
             else -> throw Exception("on line ${getLine()}")
         }

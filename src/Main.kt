@@ -5,6 +5,6 @@ fun main(args: Array<String>) {
     val lexer = Lexer()
 
     val parser = Parser(lexer)
-    parser.program()
-
+    val astTree = parser.program()
+    astTree.typeCheck()
 }
