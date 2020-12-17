@@ -62,10 +62,8 @@ class Program(val classes: List<Class>) : ASTNode() {
 class Class(val type: String, val inheritsType: String?, val features: List<Feature>) : ASTNode() {
     override fun typeCheck(): Type? {
         Environment.enterClass(type.toType())
-        features.filterIsInstance<Feature_Attributes>().forEach { attr ->
-            Environment.add(attr.id, attr.type.toType())
-        }
-        Environment.add("self", SELF_TYPE)
+
+
         features.forEach {
 
             it.typeCheck()
@@ -79,6 +77,7 @@ class Class(val type: String, val inheritsType: String?, val features: List<Feat
     }
 
     fun init() {
+        Environment.enterClass(type.toType())
         features.filterIsInstance<Feature_Function>().forEach {
             FunctionTable.addFunction(
                 type.toType(),
@@ -87,6 +86,10 @@ class Class(val type: String, val inheritsType: String?, val features: List<Feat
                 it.returnType.toType()
             )
         }
+        features.filterIsInstance<Feature_Attributes>().forEach {
+            Environment.currentClassType().addAttr(it.id,it.type.toType())
+        }
+        Environment.currentClassType().addAttr("self", SELF_TYPE)
     }
 }
 

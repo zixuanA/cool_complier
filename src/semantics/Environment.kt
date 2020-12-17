@@ -29,6 +29,9 @@ object Environment {
                 return type
             }
         }
+        currentType.find(identifier)?.let {
+            return it
+        }
         throw ClassNotFoundException(identifier)
     }
 
@@ -44,8 +47,6 @@ object Environment {
 
     fun enterClass(type: Type) {
         currentType = type
-        exitScope()
-        enterScope()
     }
 
     fun checkScope(identifier: String): Boolean {
